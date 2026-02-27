@@ -79,6 +79,16 @@ func CGoStopXray() *C.char {
 	return C.CString(StopXray())
 }
 
+//export CGoSetTunFd
+func CGoSetTunFd(fd int) *C.char {
+	return C.CString(SetTunFd(fd))
+}
+
+//export CGoSetMemoryLimit
+func CGoSetMemoryLimit(memoryMB int) {
+	SetMemoryLimit(memoryMB)
+}
+
 //export CGoXrayVersion
 func CGoXrayVersion() *C.char {
 	return C.CString(XrayVersion())
