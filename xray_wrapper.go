@@ -4,10 +4,14 @@ package libXray
 import (
 	"encoding/base64"
 	"encoding/json"
+	"os"
+	"runtime/debug"
+	"strconv"
 
 	"github.com/xtls/libxray/geo"
 	"github.com/xtls/libxray/nodep"
 	"github.com/xtls/libxray/xray"
+	"github.com/xtls/xray-core/common/platform"
 )
 
 type CountGeoDataRequest struct {
@@ -148,6 +152,20 @@ func NewXrayRunFromJSONRequest(datDir, mphCachePath, configJSON string) (string,
 
 	// Encode the JSON bytes to a base64 string
 	return base64.StdEncoding.EncodeToString(requestBytes), nil
+}
+func SetTunFd(fd int) string {
+	err := os.Setenv(platform.TunFdKey, strconv.Itoa(fd))
+	var response nodep.CallResponse[string]
+	return response.EncodeToBase64("", err)
+}
+
+// SetMemoryLimit sets soft memory limit in MB. memoryMB <= 0 uses 30.
+// For iOS GC/FreeOSMemory behavior use memory.InitForceFree() (memory_ios.go).
+func SetMemoryLimit(memoryMB int) {
+	if memoryMB <= 0 {
+		memoryMB = 30
+	}
+	debug.SetMemoryLimit(int64(memoryMB) * 1024 * 1024)
 }
 
 // Run Xray instance.
