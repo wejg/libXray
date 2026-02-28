@@ -79,7 +79,7 @@ func Ping(base64Text string) string {
 	return response.EncodeToBase64(delay, err)
 }
 
-// query inbound and outbound stats.
+// query inbound and outbound stats (decoded input = URL or tag; tag triggers in-process).
 func QueryStats(base64Text string) string {
 	var response nodep.CallResponse[string]
 	server, err := base64.StdEncoding.DecodeString(base64Text)
@@ -88,6 +88,21 @@ func QueryStats(base64Text string) string {
 	}
 
 	stats, err := xray.QueryStats(string(server))
+	if err != nil {
+		return response.EncodeToBase64("", err)
+	}
+	return response.EncodeToBase64(stats, nil)
+}
+
+// QueryStatsByTag queries stats by outbound tag only (in-process, no URL). Use this to avoid metrics/expvar.
+func QueryStatsByTag(base64Tag string) string {
+	var response nodep.CallResponse[string]
+	tag, err := base64.StdEncoding.DecodeString(base64Tag)
+	if err != nil {
+		return response.EncodeToBase64("", err)
+	}
+
+	stats, err := xray.QueryStatsByTag(string(tag))
 	if err != nil {
 		return response.EncodeToBase64("", err)
 	}
