@@ -60,7 +60,7 @@ func InitForceFree() {
 	debug.SetMemoryLimit(maxMemory)
 	duration := time.Duration(interval) * time.Second
 	forceFree(duration)
-	startMemMonitor()
+	//startMemMonitor()
 }
 func startMemMonitor() {
 	go func() {
