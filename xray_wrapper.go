@@ -13,8 +13,8 @@ import (
 
 // SetTunFd sets the TUN file descriptor.
 // Call this BEFORE RunXray/RunXrayFromJSON.
-func SetTunFd(fd int32) {
-	xray.SetTunFd(fd)
+func SetTunFd(fd int32) string {
+	return xray.SetTunFd(fd)
 }
 
 type CountGeoDataRequest struct {

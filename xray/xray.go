@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/xtls/libxray/memory"
+	"github.com/xtls/libxray/nodep"
 	"github.com/xtls/xray-core/common/cmdarg"
 	"github.com/xtls/xray-core/common/platform"
 	"github.com/xtls/xray-core/core"
@@ -48,8 +49,10 @@ func StartXrayFromJSON(configJSON string) (*core.Instance, error) {
 
 // SetTunFd sets the TUN file descriptor.
 // Call this BEFORE RunXray/RunXrayFromJSON.
-func SetTunFd(fd int32) {
-	os.Setenv(platform.TunFdKey, strconv.Itoa(int(fd)))
+func SetTunFd(fd int32) string {
+	err := os.Setenv(platform.TunFdKey, strconv.Itoa(int(fd)))
+	var response nodep.CallResponse[string]
+	return response.EncodeToBase64("", err)
 }
 
 func InitEnv(datDir string, mphCachePath string) {
