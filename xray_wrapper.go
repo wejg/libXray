@@ -4,14 +4,11 @@ package libXray
 import (
 	"encoding/base64"
 	"encoding/json"
-	"os"
 	"runtime/debug"
-	"strconv"
 
 	"github.com/xtls/libxray/geo"
 	"github.com/xtls/libxray/nodep"
 	"github.com/xtls/libxray/xray"
-	"github.com/xtls/xray-core/common/platform"
 )
 
 // SetTunFd sets the TUN file descriptor.
@@ -173,11 +170,6 @@ func NewXrayRunFromJSONRequest(datDir, mphCachePath, configJSON string) (string,
 
 	// Encode the JSON bytes to a base64 string
 	return base64.StdEncoding.EncodeToString(requestBytes), nil
-}
-func SetTunFd(fd int) string {
-	err := os.Setenv(platform.TunFdKey, strconv.Itoa(fd))
-	var response nodep.CallResponse[string]
-	return response.EncodeToBase64("", err)
 }
 
 // SetMemoryLimit sets soft memory limit in MB. memoryMB <= 0 uses 30.
