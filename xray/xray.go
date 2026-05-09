@@ -1,6 +1,8 @@
 package xray
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 	"runtime/debug"
 	"strconv"
@@ -8,8 +10,11 @@ import (
 	"github.com/xtls/libxray/memory"
 	"github.com/xtls/libxray/nodep"
 	"github.com/xtls/xray-core/common/cmdarg"
+	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/platform"
 	"github.com/xtls/xray-core/core"
+	"github.com/xtls/xray-core/features/outbound"
+	"github.com/xtls/xray-core/infra/conf"
 	"github.com/xtls/xray-core/infra/conf/serial"
 	"github.com/xtls/xray-core/main/commands/base"
 	_ "github.com/xtls/xray-core/main/distro/all"
@@ -115,6 +120,25 @@ func StopXray() error {
 		}
 	}
 	return nil
+}
+
+// ReplaceOutbound hot-swaps the outbound whose tag matches the one in outboundJSON.
+// outboundJSON is a single outbound object (the same structure as one item in the "outbounds" array).
+func ReplaceOutbound(outboundJSON string) error {
+	if coreServer == nil || !coreServer.IsRunning() {
+		return errors.New("xray not running")
+	}
+	var od conf.OutboundDetourConfig
+	if err := json.Unmarshal([]byte(outboundJSON), &od); err != nil {
+		return err
+	}
+	handlerCfg, err := od.Build()
+	if err != nil {
+		return err
+	}
+	om := coreServer.GetFeature(outbound.ManagerType()).(outbound.Manager)
+	_ = om.RemoveHandler(context.Background(), od.Tag)
+	return core.AddOutboundHandler(coreServer, handlerCfg)
 }
 
 // Xray's version

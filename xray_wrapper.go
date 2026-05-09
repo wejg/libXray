@@ -213,6 +213,19 @@ func RunXrayFromJSON(base64Text string) string {
 	return response.EncodeToBase64("", err)
 }
 
+// ReplaceOutbound hot-swaps a running outbound by tag without restarting Xray.
+// base64Text is the base64-encoded JSON of a single outbound object (same structure as one item in "outbounds").
+// The tag is extracted from the JSON itself — no need to pass it separately.
+func ReplaceOutbound(base64Text string) string {
+	var response nodep.CallResponse[string]
+	req, err := base64.StdEncoding.DecodeString(base64Text)
+	if err != nil {
+		return response.EncodeToBase64("", err)
+	}
+	err = xray.ReplaceOutbound(string(req))
+	return response.EncodeToBase64("", err)
+}
+
 // Get Xray State
 func GetXrayState() bool {
 	return xray.GetXrayState()
