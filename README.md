@@ -10,6 +10,28 @@ This is a wrapper around [Xray-core](https://github.com/XTLS/Xray-core) to impro
 2. This repository does not guarantee API stability, you need to adapt it yourself.
 3. This repository is only compatible with the latest release of Xray-core.
 
+# Versioning
+
+Releases use CalVer in the form `v<YY>.<M>.<D>` (e.g. `v26.3.27` = 2026-03-27).
+Because Go modules require any module with major version `>= 2` to encode the
+major in its import path, every CalVer release is mirrored onto a Go-friendly
+SemVer tag on the same commit:
+
+| CalVer tag | Go-import tag |
+| ---------- | ------------- |
+| `v26.3.27` | `v1.260327.0` |
+
+Go consumers should pin against the SemVer mirror:
+
+```shell
+go get github.com/xtls/libxray@v1.260327.0
+```
+
+The mirror tag is created automatically by
+[`.github/workflows/release-go-mirror.yml`](./.github/workflows/release-go-mirror.yml)
+on every CalVer push. Existing CalVer tags can be backfilled with
+[`scripts/backfill-semver-tags.sh`](./scripts/backfill-semver-tags.sh).
+
 # Features
 
 ## build
@@ -18,21 +40,29 @@ Compile script. It is recommended to always use this script to compile libXray. 
 
 depends on git and go.
 
+By default, the build script does not clone [Xray-core](https://github.com/XTLS/Xray-core). It uses Go modules and pins Xray-core to tag `v26.6.1` (recorded by Go as the matching pseudo-version).
+Pass the optional `local` argument to use an existing local checkout at `../Xray-core` through a Go module `replace`.
+
 ### Usage
 
 ```shell
 # Android (min Android API level is 21)
 python3 build/main.py android
+python3 build/main.py android local
 
 # Apple (gomobile or go)
 python3 build/main.py apple gomobile
 python3 build/main.py apple go
+python3 build/main.py apple gomobile local
+python3 build/main.py apple go local
 
 # Linux
 python3 build/main.py linux
+python3 build/main.py linux local
 
 # Windows
 python3 build/main.py windows
+python3 build/main.py windows local
 
 ```
 
