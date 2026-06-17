@@ -222,6 +222,102 @@ func ReplaceOutbound(base64Text string) string {
 	return response.EncodeToBase64("", err)
 }
 
+// ReplaceInbound hot-swaps a running inbound by tag without restarting Xray.
+// base64Text is the base64-encoded JSON of a single inbound object (same structure as one item in "inbounds").
+// The tag is extracted from the JSON itself — no need to pass it separately.
+func ReplaceInbound(base64Text string) string {
+	var response nodep.CallResponse[string]
+	req, err := base64.StdEncoding.DecodeString(base64Text)
+	if err != nil {
+		return response.EncodeToBase64("", err)
+	}
+	err = xray.ReplaceInbound(string(req))
+	return response.EncodeToBase64("", err)
+}
+
+type addRouteRuleRequest struct {
+	Rule         string `json:"rule"`         // a single routing rule object, as a JSON string
+	ShouldAppend bool   `json:"shouldAppend"` // true: append to end of rule list; false: REPLACE the whole rule list with this one rule. Almost always use true.
+}
+
+// AddRouteRule hot-adds a single routing rule without restarting Xray.
+// base64Text is the base64-encoded JSON of an addRouteRuleRequest.
+func AddRouteRule(base64Text string) string {
+	var response nodep.CallResponse[string]
+	req, err := base64.StdEncoding.DecodeString(base64Text)
+	if err != nil {
+		return response.EncodeToBase64("", err)
+	}
+	var request addRouteRuleRequest
+	if err = json.Unmarshal(req, &request); err != nil {
+		return response.EncodeToBase64("", err)
+	}
+	err = xray.AddRouteRule(request.Rule, request.ShouldAppend)
+	return response.EncodeToBase64("", err)
+}
+
+// RemoveRouteRule removes a routing rule by its ruleTag without restarting Xray.
+// base64Text is the base64-encoded ruleTag string.
+func RemoveRouteRule(base64Text string) string {
+	var response nodep.CallResponse[string]
+	tag, err := base64.StdEncoding.DecodeString(base64Text)
+	if err != nil {
+		return response.EncodeToBase64("", err)
+	}
+	err = xray.RemoveRouteRule(string(tag))
+	return response.EncodeToBase64("", err)
+}
+
+// AddInbound hot-adds a single inbound without restarting Xray.
+// base64Text is the base64-encoded JSON of a single inbound object (same structure as one item in "inbounds").
+// The tag is read from the JSON and must be unique; a duplicate tag returns an "existing tag found" error.
+func AddInbound(base64Text string) string {
+	var response nodep.CallResponse[string]
+	req, err := base64.StdEncoding.DecodeString(base64Text)
+	if err != nil {
+		return response.EncodeToBase64("", err)
+	}
+	err = xray.AddInbound(string(req))
+	return response.EncodeToBase64("", err)
+}
+
+// RemoveInbound removes a running inbound by tag without restarting Xray.
+// base64Text is the base64-encoded inbound tag string.
+func RemoveInbound(base64Text string) string {
+	var response nodep.CallResponse[string]
+	tag, err := base64.StdEncoding.DecodeString(base64Text)
+	if err != nil {
+		return response.EncodeToBase64("", err)
+	}
+	err = xray.RemoveInbound(string(tag))
+	return response.EncodeToBase64("", err)
+}
+
+// AddOutbound hot-adds a single outbound without restarting Xray.
+// base64Text is the base64-encoded JSON of a single outbound object (same structure as one item in "outbounds").
+// The tag is read from the JSON and must be unique; a duplicate tag returns an "existing tag found" error.
+func AddOutbound(base64Text string) string {
+	var response nodep.CallResponse[string]
+	req, err := base64.StdEncoding.DecodeString(base64Text)
+	if err != nil {
+		return response.EncodeToBase64("", err)
+	}
+	err = xray.AddOutbound(string(req))
+	return response.EncodeToBase64("", err)
+}
+
+// RemoveOutbound removes a running outbound by tag without restarting Xray.
+// base64Text is the base64-encoded outbound tag string.
+func RemoveOutbound(base64Text string) string {
+	var response nodep.CallResponse[string]
+	tag, err := base64.StdEncoding.DecodeString(base64Text)
+	if err != nil {
+		return response.EncodeToBase64("", err)
+	}
+	err = xray.RemoveOutbound(string(tag))
+	return response.EncodeToBase64("", err)
+}
+
 // Get Xray State
 func GetXrayState() bool {
 	return xray.GetXrayState()

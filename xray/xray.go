@@ -12,9 +12,12 @@ import (
 	"github.com/xtls/xray-core/common/cmdarg"
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/platform"
+	"github.com/xtls/xray-core/common/serial"
 	"github.com/xtls/xray-core/core"
 
+	"github.com/xtls/xray-core/features/inbound"
 	"github.com/xtls/xray-core/features/outbound"
+	"github.com/xtls/xray-core/features/routing"
 	"github.com/xtls/xray-core/infra/conf"
 	_ "github.com/xtls/xray-core/main/distro/all"
 )
@@ -132,6 +135,119 @@ func ReplaceOutbound(outboundJSON string) error {
 	om := coreServer.GetFeature(outbound.ManagerType()).(outbound.Manager)
 	_ = om.RemoveHandler(context.Background(), od.Tag)
 	return core.AddOutboundHandler(coreServer, handlerCfg)
+}
+
+// ReplaceInbound hot-swaps the inbound whose tag matches the one in inboundJSON,
+// without restarting the core.
+// inboundJSON is a single inbound object (the same structure as one item in the "inbounds" array).
+func ReplaceInbound(inboundJSON string) error {
+	if coreServer == nil || !coreServer.IsRunning() {
+		return errors.New("xray not running")
+	}
+	var id conf.InboundDetourConfig
+	if err := json.Unmarshal([]byte(inboundJSON), &id); err != nil {
+		return err
+	}
+	handlerCfg, err := id.Build()
+	if err != nil {
+		return err
+	}
+	im := coreServer.GetFeature(inbound.ManagerType()).(inbound.Manager)
+	_ = im.RemoveHandler(context.Background(), id.Tag)
+	return core.AddInboundHandler(coreServer, handlerCfg)
+}
+
+// AddRouteRule hot-adds a single routing rule without restarting the core.
+// shouldAppend=true appends the rule to the end of the existing rule list.
+// shouldAppend=false REPLACES the entire rule list with just this rule (the core
+// has no "insert at front" capability; rules can only be appended). For hot-adding
+// a rule you almost always want shouldAppend=true.
+// ruleJSON is a single rule object (the same structure as one item in
+// "routing.rules"). To later remove it via RemoveRouteRule, include a "ruleTag" field.
+func AddRouteRule(ruleJSON string, shouldAppend bool) error {
+	if coreServer == nil || !coreServer.IsRunning() {
+		return errors.New("xray not running")
+	}
+	// Reuse the exported RouterConfig.Build to turn the single rule JSON into a
+	// *router.Config (parseRule itself is unexported). Router.AddRule expects the
+	// TypedMessage to carry a *router.Config, then reloads the rules from it.
+	rc := conf.RouterConfig{RuleList: []json.RawMessage{json.RawMessage(ruleJSON)}}
+	built, err := rc.Build()
+	if err != nil {
+		return err
+	}
+	if len(built.Rule) == 0 {
+		return errors.New("no rule built from json")
+	}
+	r := coreServer.GetFeature(routing.RouterType()).(routing.Router)
+	return r.AddRule(serial.ToTypedMessage(built), shouldAppend)
+}
+
+// RemoveRouteRule removes a routing rule by its ruleTag.
+func RemoveRouteRule(ruleTag string) error {
+	if coreServer == nil || !coreServer.IsRunning() {
+		return errors.New("xray not running")
+	}
+	r := coreServer.GetFeature(routing.RouterType()).(routing.Router)
+	return r.RemoveRule(ruleTag)
+}
+
+// AddInbound hot-adds a single inbound without restarting the core.
+// inboundJSON is a single inbound object (the same structure as one item in the
+// "inbounds" array); its tag is read from the JSON. The tag must be unique — if an
+// inbound with the same tag already exists the core returns "existing tag found".
+// Use ReplaceInbound when you want replace-by-tag semantics instead.
+func AddInbound(inboundJSON string) error {
+	if coreServer == nil || !coreServer.IsRunning() {
+		return errors.New("xray not running")
+	}
+	var id conf.InboundDetourConfig
+	if err := json.Unmarshal([]byte(inboundJSON), &id); err != nil {
+		return err
+	}
+	handlerCfg, err := id.Build()
+	if err != nil {
+		return err
+	}
+	return core.AddInboundHandler(coreServer, handlerCfg)
+}
+
+// RemoveInbound removes a running inbound by its tag, closing its listener.
+func RemoveInbound(tag string) error {
+	if coreServer == nil || !coreServer.IsRunning() {
+		return errors.New("xray not running")
+	}
+	im := coreServer.GetFeature(inbound.ManagerType()).(inbound.Manager)
+	return im.RemoveHandler(context.Background(), tag)
+}
+
+// AddOutbound hot-adds a single outbound without restarting the core.
+// outboundJSON is a single outbound object (the same structure as one item in the
+// "outbounds" array); its tag is read from the JSON. The tag must be unique — if an
+// outbound with the same tag already exists the core returns "existing tag found".
+// Use ReplaceOutbound when you want replace-by-tag semantics instead.
+func AddOutbound(outboundJSON string) error {
+	if coreServer == nil || !coreServer.IsRunning() {
+		return errors.New("xray not running")
+	}
+	var od conf.OutboundDetourConfig
+	if err := json.Unmarshal([]byte(outboundJSON), &od); err != nil {
+		return err
+	}
+	handlerCfg, err := od.Build()
+	if err != nil {
+		return err
+	}
+	return core.AddOutboundHandler(coreServer, handlerCfg)
+}
+
+// RemoveOutbound removes a running outbound by its tag.
+func RemoveOutbound(tag string) error {
+	if coreServer == nil || !coreServer.IsRunning() {
+		return errors.New("xray not running")
+	}
+	om := coreServer.GetFeature(outbound.ManagerType()).(outbound.Manager)
+	return om.RemoveHandler(context.Background(), tag)
 }
 
 // Xray's version
