@@ -60,7 +60,8 @@ python3 build/main.py windows local
 
 支持 iOS，iOSSimulator，macOS，tvOS。
 
-注意：产物 `LibXray.xcframework` 不包含 **module.modulemap**。当使用 swift 时，你需要创建一个桥接文件。
+产物 `LibXray.xcframework` 包含 **module.modulemap**。当使用 Swift 时，
+可通过 `LibXray` 模块导入。
 
 ### Linux
 
@@ -153,7 +154,7 @@ libXray 使用 `sendThrough` 来存储节点名称。
 
 延迟测试。
 
-### stats
+### metrics
 
 统计。
 
@@ -162,8 +163,7 @@ libXray 使用 `sendThrough` 来存储节点名称。
 ```json
 {
   "metrics" : {
-    "tag" : "metrics",
-    "listen": "[::1]:49227",
+    "listen": "127.0.0.1:49227"
   },
   "policy" : {
     "system" : {
@@ -177,10 +177,17 @@ libXray 使用 `sendThrough` 来存储节点名称。
 }
 ```
 
+metrics 服务通过 HTTP 暴露 Xray 运行时计数。例如 `listen` 为
+`127.0.0.1:49227` 时，读取：
+
+```text
+http://localhost:49227/debug/vars
+```
+
 注意：
 
 1. 当进行测试延迟或验证配置时，确保 `metrics` 为 `null`。
-2. 当打开统计时，Xray-core 实例需要在 **子进程** 运行。
+2. libXray 这里只需要 `listen` 字段。直接用 HTTP 客户端查询 `/debug/vars`，不再通过 libXray 包装。
 
 ### validation
 

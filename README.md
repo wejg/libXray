@@ -92,7 +92,8 @@ This works well when you use ffi for integration. For example, integration with 
 
 Support iOS, iOSSimulator, macOS, tvOS.
 
-Note: The product `LibXray.xcframework` does not contain **module.modulemap**. When using swift, you need to create a bridge file.
+The product `LibXray.xcframework` contains **module.modulemap**. When using
+Swift, import it as module `LibXray`.
 
 ### Linux
 
@@ -185,15 +186,14 @@ Some tools used to parse shared links.
 
 Latency testing.
 
-### stats
+### metrics
 
 Refer to the following configuration:
 
 ```json
 {
   "metrics" : {
-    "tag" : "metrics",
-    "listen": "[::1]:49227",
+    "listen": "127.0.0.1:49227"
   },
   "policy" : {
     "system" : {
@@ -207,11 +207,18 @@ Refer to the following configuration:
 }
 ```
 
+The metrics server exposes the Xray runtime counters through HTTP. For example,
+when `listen` is `127.0.0.1:49227`, read:
+
+```text
+http://localhost:49227/debug/vars
+```
+
 Note:
 
 1. When testing latency or validating configuration, make sure `metrics` is `null`.
 
-2. When enabling metrics, the Xray-core instance needs to be run in a **child process**.
+2. Metrics only needs the `listen` field in this wrapper. Query `/debug/vars` directly with an HTTP client instead of going through libXray.
 
 ### validation
 
