@@ -19,9 +19,14 @@ import (
 // url means the website we use to test speed. "https://www.google.com" is a good choice for most cases.
 // proxy means the local http/socks5 proxy, like "socks5://[::1]:1080".
 func Ping(datDir string, configPath string, timeout int, url string, proxy string) (int64, error) {
-	if coreServer != nil && coreServer.IsRunning() {
-		return measureDelayWithRunningCore(timeout, url)
+	coreServerMu.RLock()
+	server := coreServer
+	if server != nil && server.IsRunning() {
+		delay, err := measureDelayWithRunningCore(server, timeout, url)
+		coreServerMu.RUnlock()
+		return delay, err
 	}
+	coreServerMu.RUnlock()
 
 	InitEnv(datDir)
 	server, err := StartXray(configPath)
@@ -42,7 +47,7 @@ func Ping(datDir string, configPath string, timeout int, url string, proxy strin
 	return delay, nil
 }
 
-func measureDelayWithRunningCore(timeout int, url string) (int64, error) {
+func measureDelayWithRunningCore(server *core.Instance, timeout int, url string) (int64, error) {
 	httpTimeout := time.Second * time.Duration(timeout)
 	client := &http.Client{
 		Transport: &http.Transport{
@@ -55,7 +60,7 @@ func measureDelayWithRunningCore(timeout int, url string) (int64, error) {
 				if dest.Network == xnet.Network_Unknown {
 					dest.Network = xnet.Network_TCP
 				}
-				return core.Dial(ctx, coreServer, dest)
+				return core.Dial(ctx, server, dest)
 			},
 		},
 		Timeout: httpTimeout,

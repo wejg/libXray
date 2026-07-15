@@ -48,10 +48,13 @@ func queryStatsInProcess(tag string) (string, error) {
 	if tag == "" {
 		return "", fmt.Errorf("stats tag is empty")
 	}
-	if coreServer == nil || !coreServer.IsRunning() {
+	coreServerMu.RLock()
+	defer coreServerMu.RUnlock()
+	server := coreServer
+	if server == nil || !server.IsRunning() {
 		return "", fmt.Errorf("core not running")
 	}
-	m := coreServer.GetFeature(corestats.ManagerType())
+	m := server.GetFeature(corestats.ManagerType())
 	if m == nil {
 		return "", fmt.Errorf("stats not enabled in config")
 	}

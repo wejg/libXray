@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime/debug"
 	"strconv"
+	"sync"
 
 	"github.com/xtls/libxray/memory"
 	"github.com/xtls/libxray/nodep"
@@ -23,7 +24,8 @@ import (
 )
 
 var (
-	coreServer *core.Instance
+	coreServer   *core.Instance
+	coreServerMu sync.RWMutex
 )
 
 func StartXray(configPath string) (*core.Instance, error) {
@@ -71,16 +73,20 @@ func InitEnv(datDir string) {
 // datDir means the dir which geosite.dat and geoip.dat are in.
 // configPath means the config.json file path.
 func RunXray(datDir, configPath string) (err error) {
+	coreServerMu.Lock()
+	defer coreServerMu.Unlock()
+
 	InitEnv(datDir)
 	memory.InitForceFree()
-	coreServer, err = StartXray(configPath)
+	server, err := StartXray(configPath)
 	if err != nil {
 		return
 	}
 
-	if err = coreServer.Start(); err != nil {
+	if err = server.Start(); err != nil {
 		return
 	}
+	coreServer = server
 
 	debug.FreeOSMemory()
 	return nil
@@ -90,12 +96,16 @@ func RunXray(datDir, configPath string) (err error) {
 // datDir means the dir which geosite.dat and geoip.dat are in.
 // configJSON means the JSON configuration string.
 func RunXrayFromJSON(datDir, configJSON string) (err error) {
+	coreServerMu.Lock()
+	defer coreServerMu.Unlock()
+
 	InitEnv(datDir)
 	memory.InitForceFree()
-	coreServer, err = StartXrayFromJSON(configJSON)
+	server, err := StartXrayFromJSON(configJSON)
 	if err != nil {
 		return
 	}
+	coreServer = server
 
 	debug.FreeOSMemory()
 	return nil
@@ -103,11 +113,15 @@ func RunXrayFromJSON(datDir, configJSON string) (err error) {
 
 // Get Xray State
 func GetXrayState() bool {
+	coreServerMu.RLock()
+	defer coreServerMu.RUnlock()
 	return coreServer != nil && coreServer.IsRunning()
 }
 
 // Stop Xray instance.
 func StopXray() error {
+	coreServerMu.Lock()
+	defer coreServerMu.Unlock()
 	if coreServer != nil {
 		err := coreServer.Close()
 		coreServer = nil
@@ -121,7 +135,10 @@ func StopXray() error {
 // ReplaceOutbound hot-swaps the outbound whose tag matches the one in outboundJSON.
 // outboundJSON is a single outbound object (the same structure as one item in the "outbounds" array).
 func ReplaceOutbound(outboundJSON string) error {
-	if coreServer == nil || !coreServer.IsRunning() {
+	coreServerMu.RLock()
+	defer coreServerMu.RUnlock()
+	server := coreServer
+	if server == nil || !server.IsRunning() {
 		return errors.New("xray not running")
 	}
 	var od conf.OutboundDetourConfig
@@ -132,16 +149,19 @@ func ReplaceOutbound(outboundJSON string) error {
 	if err != nil {
 		return err
 	}
-	om := coreServer.GetFeature(outbound.ManagerType()).(outbound.Manager)
+	om := server.GetFeature(outbound.ManagerType()).(outbound.Manager)
 	_ = om.RemoveHandler(context.Background(), od.Tag)
-	return core.AddOutboundHandler(coreServer, handlerCfg)
+	return core.AddOutboundHandler(server, handlerCfg)
 }
 
 // ReplaceInbound hot-swaps the inbound whose tag matches the one in inboundJSON,
 // without restarting the core.
 // inboundJSON is a single inbound object (the same structure as one item in the "inbounds" array).
 func ReplaceInbound(inboundJSON string) error {
-	if coreServer == nil || !coreServer.IsRunning() {
+	coreServerMu.RLock()
+	defer coreServerMu.RUnlock()
+	server := coreServer
+	if server == nil || !server.IsRunning() {
 		return errors.New("xray not running")
 	}
 	var id conf.InboundDetourConfig
@@ -152,9 +172,9 @@ func ReplaceInbound(inboundJSON string) error {
 	if err != nil {
 		return err
 	}
-	im := coreServer.GetFeature(inbound.ManagerType()).(inbound.Manager)
+	im := server.GetFeature(inbound.ManagerType()).(inbound.Manager)
 	_ = im.RemoveHandler(context.Background(), id.Tag)
-	return core.AddInboundHandler(coreServer, handlerCfg)
+	return core.AddInboundHandler(server, handlerCfg)
 }
 
 // AddRouteRule hot-adds a single routing rule without restarting the core.
@@ -165,7 +185,10 @@ func ReplaceInbound(inboundJSON string) error {
 // ruleJSON is a single rule object (the same structure as one item in
 // "routing.rules"). To later remove it via RemoveRouteRule, include a "ruleTag" field.
 func AddRouteRule(ruleJSON string, shouldAppend bool) error {
-	if coreServer == nil || !coreServer.IsRunning() {
+	coreServerMu.RLock()
+	defer coreServerMu.RUnlock()
+	server := coreServer
+	if server == nil || !server.IsRunning() {
 		return errors.New("xray not running")
 	}
 	// Reuse the exported RouterConfig.Build to turn the single rule JSON into a
@@ -179,16 +202,19 @@ func AddRouteRule(ruleJSON string, shouldAppend bool) error {
 	if len(built.Rule) == 0 {
 		return errors.New("no rule built from json")
 	}
-	r := coreServer.GetFeature(routing.RouterType()).(routing.Router)
+	r := server.GetFeature(routing.RouterType()).(routing.Router)
 	return r.AddRule(serial.ToTypedMessage(built), shouldAppend)
 }
 
 // RemoveRouteRule removes a routing rule by its ruleTag.
 func RemoveRouteRule(ruleTag string) error {
-	if coreServer == nil || !coreServer.IsRunning() {
+	coreServerMu.RLock()
+	defer coreServerMu.RUnlock()
+	server := coreServer
+	if server == nil || !server.IsRunning() {
 		return errors.New("xray not running")
 	}
-	r := coreServer.GetFeature(routing.RouterType()).(routing.Router)
+	r := server.GetFeature(routing.RouterType()).(routing.Router)
 	return r.RemoveRule(ruleTag)
 }
 
@@ -198,7 +224,10 @@ func RemoveRouteRule(ruleTag string) error {
 // inbound with the same tag already exists the core returns "existing tag found".
 // Use ReplaceInbound when you want replace-by-tag semantics instead.
 func AddInbound(inboundJSON string) error {
-	if coreServer == nil || !coreServer.IsRunning() {
+	coreServerMu.RLock()
+	defer coreServerMu.RUnlock()
+	server := coreServer
+	if server == nil || !server.IsRunning() {
 		return errors.New("xray not running")
 	}
 	var id conf.InboundDetourConfig
@@ -209,15 +238,18 @@ func AddInbound(inboundJSON string) error {
 	if err != nil {
 		return err
 	}
-	return core.AddInboundHandler(coreServer, handlerCfg)
+	return core.AddInboundHandler(server, handlerCfg)
 }
 
 // RemoveInbound removes a running inbound by its tag, closing its listener.
 func RemoveInbound(tag string) error {
-	if coreServer == nil || !coreServer.IsRunning() {
+	coreServerMu.RLock()
+	defer coreServerMu.RUnlock()
+	server := coreServer
+	if server == nil || !server.IsRunning() {
 		return errors.New("xray not running")
 	}
-	im := coreServer.GetFeature(inbound.ManagerType()).(inbound.Manager)
+	im := server.GetFeature(inbound.ManagerType()).(inbound.Manager)
 	return im.RemoveHandler(context.Background(), tag)
 }
 
@@ -227,7 +259,10 @@ func RemoveInbound(tag string) error {
 // outbound with the same tag already exists the core returns "existing tag found".
 // Use ReplaceOutbound when you want replace-by-tag semantics instead.
 func AddOutbound(outboundJSON string) error {
-	if coreServer == nil || !coreServer.IsRunning() {
+	coreServerMu.RLock()
+	defer coreServerMu.RUnlock()
+	server := coreServer
+	if server == nil || !server.IsRunning() {
 		return errors.New("xray not running")
 	}
 	var od conf.OutboundDetourConfig
@@ -238,15 +273,18 @@ func AddOutbound(outboundJSON string) error {
 	if err != nil {
 		return err
 	}
-	return core.AddOutboundHandler(coreServer, handlerCfg)
+	return core.AddOutboundHandler(server, handlerCfg)
 }
 
 // RemoveOutbound removes a running outbound by its tag.
 func RemoveOutbound(tag string) error {
-	if coreServer == nil || !coreServer.IsRunning() {
+	coreServerMu.RLock()
+	defer coreServerMu.RUnlock()
+	server := coreServer
+	if server == nil || !server.IsRunning() {
 		return errors.New("xray not running")
 	}
-	om := coreServer.GetFeature(outbound.ManagerType()).(outbound.Manager)
+	om := server.GetFeature(outbound.ManagerType()).(outbound.Manager)
 	return om.RemoveHandler(context.Background(), tag)
 }
 

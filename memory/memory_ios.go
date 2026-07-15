@@ -19,6 +19,7 @@ import (
 	"log"
 	"runtime"
 	"runtime/debug"
+	"sync"
 	"time"
 	"unsafe"
 )
@@ -41,6 +42,12 @@ const (
 	dangerLevel = 2 * 1024 * 1024 // 危险阈值
 )
 
+var (
+	runtimeInitOnce       sync.Once
+	memoryLimitMu         sync.Mutex
+	memoryLimitConfigured bool
+)
+
 func forceFree(interval time.Duration) {
 	go func() {
 		for {
@@ -51,17 +58,33 @@ func forceFree(interval time.Duration) {
 }
 
 func InitForceFree() {
+	runtimeInitOnce.Do(func() {
+		// --- 关键修改点：重定向 log 输出 ---
+		log.SetOutput(&iosWriter{})
+		log.SetFlags(0) // 既然 NSLog 自带时间戳，可以关掉 log 的默认时间戳
 
-	// --- 关键修改点：重定向 log 输出 ---
-	log.SetOutput(&iosWriter{})
-	log.SetFlags(0) // 既然 NSLog 自带时间戳，可以关掉 log 的默认时间戳
-
-	debug.SetGCPercent(10)
-	debug.SetMemoryLimit(maxMemory)
-	duration := time.Duration(interval) * time.Second
-	forceFree(duration)
-	//startMemMonitor()
+		debug.SetGCPercent(10)
+		memoryLimitMu.Lock()
+		if !memoryLimitConfigured {
+			debug.SetMemoryLimit(maxMemory)
+		}
+		memoryLimitMu.Unlock()
+		duration := time.Duration(interval) * time.Second
+		forceFree(duration)
+		//startMemMonitor()
+	})
 }
+
+func SetMemoryLimit(memoryMB int) {
+	if memoryMB <= 0 {
+		memoryMB = 30
+	}
+	memoryLimitMu.Lock()
+	memoryLimitConfigured = true
+	debug.SetMemoryLimit(int64(memoryMB) * 1024 * 1024)
+	memoryLimitMu.Unlock()
+}
+
 func startMemMonitor() {
 	go func() {
 		var lastPauseNS uint64

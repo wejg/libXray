@@ -4,9 +4,9 @@ package libXray
 import (
 	"encoding/base64"
 	"encoding/json"
-	"runtime/debug"
 
 	"github.com/xtls/libxray/geo"
+	"github.com/xtls/libxray/memory"
 	"github.com/xtls/libxray/nodep"
 	"github.com/xtls/libxray/xray"
 )
@@ -171,10 +171,7 @@ func NewXrayRunFromJSONRequest(datDir, configJSON string) (string, error) {
 // SetMemoryLimit sets soft memory limit in MB. memoryMB <= 0 uses 30.
 // For iOS GC/FreeOSMemory behavior use memory.InitForceFree() (memory_ios.go).
 func SetMemoryLimit(memoryMB int) {
-	if memoryMB <= 0 {
-		memoryMB = 30
-	}
-	debug.SetMemoryLimit(int64(memoryMB) * 1024 * 1024)
+	memory.SetMemoryLimit(memoryMB)
 }
 
 // Run Xray instance.
