@@ -3,17 +3,15 @@ package xray
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"runtime/debug"
-	"strconv"
 	"sync"
 
 	"github.com/xtls/libxray/memory"
-	"github.com/xtls/libxray/nodep"
 	"github.com/xtls/xray-core/common/cmdarg"
+
 	"github.com/xtls/xray-core/common/errors"
-	"github.com/xtls/xray-core/common/platform"
 	"github.com/xtls/xray-core/common/serial"
+
 	"github.com/xtls/xray-core/core"
 
 	"github.com/xtls/xray-core/features/inbound"
@@ -27,6 +25,8 @@ var (
 	coreServer   *core.Instance
 	coreServerMu sync.RWMutex
 )
+
+var ErrAlreadyRunning = errors.New("xray is already running")
 
 func StartXray(configPath string) (*core.Instance, error) {
 	file := cmdarg.Arg{configPath}
@@ -56,27 +56,16 @@ func StartXrayFromJSON(configJSON string) (*core.Instance, error) {
 	return server, nil
 }
 
-// SetTunFd sets the TUN file descriptor.
-// Call this BEFORE RunXray/RunXrayFromJSON.
-func SetTunFd(fd int32) string {
-	err := os.Setenv(platform.TunFdKey, strconv.Itoa(int(fd)))
-	var response nodep.CallResponse[string]
-	return response.EncodeToBase64("", err)
-}
-
-func InitEnv(datDir string) {
-	os.Setenv(platform.AssetLocation, datDir)
-	os.Setenv(platform.CertLocation, datDir)
-}
-
 // Run Xray instance.
-// datDir means the dir which geosite.dat and geoip.dat are in.
 // configPath means the config.json file path.
-func RunXray(datDir, configPath string) (err error) {
+func RunXray(configPath string) (err error) {
 	coreServerMu.Lock()
 	defer coreServerMu.Unlock()
 
-	InitEnv(datDir)
+	if coreServer != nil {
+		return ErrAlreadyRunning
+	}
+
 	memory.InitForceFree()
 	server, err := StartXray(configPath)
 	if err != nil {
@@ -84,6 +73,8 @@ func RunXray(datDir, configPath string) (err error) {
 	}
 
 	if err = server.Start(); err != nil {
+
+		_ = server.Close()
 		return
 	}
 	coreServer = server
@@ -93,13 +84,15 @@ func RunXray(datDir, configPath string) (err error) {
 }
 
 // Run Xray instance with JSON configuration string.
-// datDir means the dir which geosite.dat and geoip.dat are in.
 // configJSON means the JSON configuration string.
-func RunXrayFromJSON(datDir, configJSON string) (err error) {
+func RunXrayFromJSON(configJSON string) (err error) {
 	coreServerMu.Lock()
 	defer coreServerMu.Unlock()
 
-	InitEnv(datDir)
+	if coreServer != nil {
+		return ErrAlreadyRunning
+	}
+
 	memory.InitForceFree()
 	server, err := StartXrayFromJSON(configJSON)
 	if err != nil {
@@ -113,8 +106,10 @@ func RunXrayFromJSON(datDir, configJSON string) (err error) {
 
 // Get Xray State
 func GetXrayState() bool {
+
 	coreServerMu.RLock()
 	defer coreServerMu.RUnlock()
+
 	return coreServer != nil && coreServer.IsRunning()
 }
 

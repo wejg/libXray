@@ -40,7 +40,7 @@ Compile script. It is recommended to always use this script to compile libXray. 
 
 depends on git and go.
 
-By default, the build script does not clone [Xray-core](https://github.com/XTLS/Xray-core). It uses Go modules and pins Xray-core to tag `v26.6.1` (recorded by Go as the matching pseudo-version).
+By default, the build script does not clone [Xray-core](https://github.com/XTLS/Xray-core). It uses Go modules and pins Xray-core to release tag `v26.7.11` through its pseudo-version.
 Pass the optional `local` argument to use an existing local checkout at `../Xray-core` through a Go module `replace`.
 
 ### Usage
@@ -101,32 +101,141 @@ depend on gcc and g++.
 
 ### Windows
 
-depend on MinGW.
+depend on LLVM MinGW.
 
-you can use winget to install [LLVM MinGW](https://github.com/mstorsjo/llvm-mingw) or [WinLibs](https://github.com/brechtsanders/winlibs_mingw) .
+you can use winget to install [LLVM MinGW](https://github.com/mstorsjo/llvm-mingw).
 
 ```shell
 winget install MartinStorsjo.LLVM-MinGW.UCRT
-winget install BrechtSanders.WinLibs.POSIX.UCRT
+```
+
+## API
+
+libXray exposes a single structured entrypoint:
+
+```go
+func Invoke(requestJSON string) string
+```
+
+The C export is:
+
+```c
+char* CGoInvoke(char* requestJSON);
+void CGoFree(char* value);
+```
+
+`CGoInvoke` allocates its response. The caller must release every non-null
+response with `CGoFree`; do not use a platform allocator directly.
+
+The request is a JSON object:
+
+```json
+{
+  "apiVersion": 1,
+  "method": "runXray",
+  "payload": {
+    "configPath": "/path/to/config.json"
+  }
+}
+```
+
+The response is a JSON object:
+
+```json
+{
+  "success": true,
+  "data": {},
+  "error": ""
+}
+```
+
+Design notes:
+
+1. A top-level `env` field is ignored and has no effect. Xray-core runtime
+   environment options belong in the root `env` object of the Xray config.
+2. `SetTunFd` has been removed. When the fd is only known at runtime, write
+   `xray.tun.fd` into the Xray config root `env` object before calling
+   `runXray`.
+3. `countGeoData` is not backed by an Xray config, so its `datDir` is passed in
+   the method payload.
+4. The complete UTF-8 encoded Invoke request and response JSON envelopes are
+   limited to 16 MiB. If either limit is exceeded, Invoke returns a failure
+   response with `success: false`, `data: null`, and a size-limit error.
+
+Supported methods:
+
+```text
+getFreePorts
+convertShareLinksToXrayJson
+convertXrayJsonToShareLinks
+countGeoData
+readGeoFiles
+ping
+queryStats
+queryStatsByTag
+testXray
+runXray
+runXrayFromJson
+stopXray
+xrayVersion
+getXrayState
+setMemoryLimit
+replaceInbound
+replaceOutbound
+addInbound
+removeInbound
+addOutbound
+removeOutbound
+addRouteRule
+removeRouteRule
+```
+
+Payloads for methods migrated from the legacy wrapper:
+
+```text
+readGeoFiles:       {"configJSON":"..."}
+queryStats:         {"server":"http://127.0.0.1:8080/debug/vars"}
+queryStatsByTag:    {"tag":"proxy"}
+setMemoryLimit:     {"memoryMB":256}
+replaceInbound:     {"inboundJSON":"..."}
+replaceOutbound:    {"outboundJSON":"..."}
+addInbound:         {"inboundJSON":"..."}
+removeInbound:      {"tag":"inbound-tag"}
+addOutbound:        {"outboundJSON":"..."}
+removeOutbound:     {"tag":"outbound-tag"}
+addRouteRule:       {"rule":"...","shouldAppend":true}
+removeRouteRule:    {"ruleTag":"rule-tag"}
 ```
 
 ## controller
 
+### Socket protect
+
 Used to solve the socket protect problem on Android.
 
-## dns
+### Process finder (per-app routing)
 
-Used to solve server address resolution issues on Android, Linux, and Windows. If not handled, the DNS traffic will be resent to the tun device, resulting in failure to initiate a connection.
+`ConnectivityManager.getConnectionOwnerUid()` is API 30+. On older Android
+libXray falls back to parsing `/proc/net/{tcp,udp}{,6}` in pure Go.
+
+Usage (Java/Kotlin):
+
+```java
+ProcessFinder finder = new ProcessFinder() {
+    @Override
+    public long findProcessByConnection(String network, String srcIP, long srcPort,
+                                         String destIP, long destPort) {
+        return -1; // return UID or -1
+    }
+};
+LibXray.registerProcessFinder(finder, Build.VERSION.SDK_INT);
+```
 
 ## geo
 
 ### count
 
 Read geo files and count the categories and rules.
-
-### read
-
-Read the Xray Json configuration and extract the geo file name used.
 
 ## main
 
@@ -145,10 +254,6 @@ Write data to a file.
 ### measure
 
 Speed ​​test the Xray configuration.
-
-### model
-
-The response body of the wrapper interface.
 
 ### port
 
@@ -227,14 +332,6 @@ Verify the Xray configuration.
 ### xray
 
 Start and stop Xray instances.
-
-## nodep_wrapper
-
-export nodep.
-
-### xray_wrapper
-
-export xray.
 
 # Credits
 

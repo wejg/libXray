@@ -2,133 +2,92 @@ package geo
 
 import (
 	"encoding/json"
-	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/xtls/xray-core/infra/conf"
 )
 
-// Read all geo files in config file.
-// configPath means where xray config file is.
-func ReadGeoFiles(xrayBytes []byte) ([]string, []string) {
-	domain, ip := loadXrayConfig(xrayBytes)
-	domainCodes := filterAndStrip(domain, "geosite")
-	domainFiles := []string{}
-	for key := range domainCodes {
-		domainFiles = append(domainFiles, key)
-	}
-
-	ipCodes := filterAndStrip(ip, "geoip")
-	ipFiles := []string{}
-	for key := range ipCodes {
-		ipFiles = append(ipFiles, key)
-	}
-
+// ReadGeoFiles returns the geo data files referenced by an Xray config.
+func ReadGeoFiles(configBytes []byte) ([]string, []string) {
+	domain, ip := loadXrayConfig(configBytes)
+	domainFiles := geoFileNames(domain, "geosite")
+	ipFiles := geoFileNames(ip, "geoip")
 	return domainFiles, ipFiles
 }
 
 func loadXrayConfig(configBytes []byte) ([]string, []string) {
-	domain := []string{}
-	ip := []string{}
-
-	var xray *conf.Config
-	err := json.Unmarshal(configBytes, &xray)
-	if err != nil {
-		return domain, ip
+	var config conf.Config
+	if err := json.Unmarshal(configBytes, &config); err != nil {
+		return []string{}, []string{}
 	}
 
-	routingDomain, routingIP := filterRouting(xray)
-	domain = append(domain, routingDomain...)
-	ip = append(ip, routingIP...)
-
-	dnsDomain, dnsIP := filterDns(xray)
-	domain = append(domain, dnsDomain...)
-	ip = append(ip, dnsIP...)
-
-	return domain, ip
+	domain, ip := filterRouting(&config)
+	dnsDomain, dnsIP := filterDNS(&config)
+	return append(domain, dnsDomain...), append(ip, dnsIP...)
 }
 
-func filterRouting(xray *conf.Config) ([]string, []string) {
+func filterRouting(config *conf.Config) ([]string, []string) {
+	if config.RouterConfig == nil {
+		return []string{}, []string{}
+	}
+
 	domain := []string{}
 	ip := []string{}
-
-	routing := xray.RouterConfig
-	if routing == nil {
-		return domain, ip
-	}
-	rules := routing.RuleList
-	if len(rules) == 0 {
-		return domain, ip
-	}
-	// parse rules
-	// we only care about domain and ip
-	type RawRule struct {
+	type rawRule struct {
 		Domain *conf.StringList `json:"domain"`
 		IP     *conf.StringList `json:"ip"`
 	}
-
-	for _, rule := range rules {
-		var rawRule RawRule
-		err := json.Unmarshal(rule, &rawRule)
-		if err != nil {
+	for _, rule := range config.RouterConfig.RuleList {
+		var raw rawRule
+		if err := json.Unmarshal(rule, &raw); err != nil {
 			continue
 		}
-		if rawRule.Domain != nil {
-			domain = append(domain, *rawRule.Domain...)
+		if raw.Domain != nil {
+			domain = append(domain, *raw.Domain...)
 		}
-		if rawRule.IP != nil {
-			ip = append(ip, *rawRule.IP...)
+		if raw.IP != nil {
+			ip = append(ip, *raw.IP...)
 		}
 	}
 	return domain, ip
 }
 
-func filterDns(xray *conf.Config) ([]string, []string) {
+func filterDNS(config *conf.Config) ([]string, []string) {
+	if config.DNSConfig == nil {
+		return []string{}, []string{}
+	}
+
 	domain := []string{}
 	ip := []string{}
-
-	dns := xray.DNSConfig
-	if dns == nil {
-		return domain, ip
-	}
-	servers := dns.Servers
-	if len(servers) == 0 {
-		return domain, ip
-	}
-
-	for _, server := range servers {
-		if len(server.Domains) > 0 {
-			domain = append(domain, server.Domains...)
-		}
-		if len(server.ExpectIPs) > 0 {
-			ip = append(ip, server.ExpectIPs...)
-		}
+	for _, server := range config.DNSConfig.Servers {
+		domain = append(domain, server.Domains...)
+		ip = append(ip, server.ExpectIPs...)
 	}
 	return domain, ip
 }
 
-func filterAndStrip(rules []string, retain string) map[string][]string {
-	m := make(map[string][]string)
-	retainPrefix := fmt.Sprintf("%s:", retain)
-	retainFile := fmt.Sprintf("%s.dat", retain)
+func geoFileNames(rules []string, defaultName string) []string {
+	files := make(map[string]struct{})
+	defaultPrefix := defaultName + ":"
+	defaultFile := defaultName + ".dat"
 	for _, rule := range rules {
-		if strings.HasPrefix(rule, retainPrefix) {
-			values := strings.SplitN(rule, ":", 2)
-			appendMap(m, retainFile, values[1])
-		} else if strings.HasPrefix(rule, "ext:") {
-			values := strings.SplitN(rule, ":", 3)
-			appendMap(m, values[1], values[2])
+		if strings.HasPrefix(rule, defaultPrefix) {
+			files[defaultFile] = struct{}{}
+			continue
+		}
+		if strings.HasPrefix(rule, "ext:") {
+			parts := strings.SplitN(rule, ":", 3)
+			if len(parts) == 3 && parts[1] != "" {
+				files[parts[1]] = struct{}{}
+			}
 		}
 	}
-	return m
-}
 
-func appendMap(m map[string][]string, key string, value string) {
-	v, ok := m[key]
-	if ok {
-		v = append(v, value)
-	} else {
-		v = []string{value}
+	result := make([]string, 0, len(files))
+	for file := range files {
+		result = append(result, file)
 	}
-	m[key] = v
+	sort.Strings(result)
+	return result
 }
